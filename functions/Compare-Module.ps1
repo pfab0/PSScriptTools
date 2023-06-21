@@ -2,8 +2,8 @@
 Function Compare-Module {
 
     [cmdletbinding()]
-    [OutputType("PSCustomObject")]
-    [alias("cmo")]
+    [OutputType('PSCustomObject')]
+    [alias('cmo')]
 
     Param (
         [Parameter(
@@ -11,10 +11,10 @@ Function Compare-Module {
             ValueFromPipelineByPropertyName
         )]
         [ValidateNotNullOrEmpty()]
-        [Alias("modulename")]
+        [Alias('modulename')]
         [string]$Name,
         [ValidateNotNullOrEmpty()]
-        [string]$Gallery = "PSGallery"
+        [string]$Gallery = 'PSGallery'
     )
 
     Begin {
@@ -23,8 +23,8 @@ Function Compare-Module {
 
         $progParam = @{
             Activity         = $MyInvocation.MyCommand
-            Status           = "Getting installed modules"
-            CurrentOperation = "Get-Module -ListAvailable"
+            Status           = 'Getting installed modules'
+            CurrentOperation = 'Get-InstalledPSResource'
             PercentComplete  = 25
         }
 
@@ -34,31 +34,33 @@ Function Compare-Module {
 
     Process {
 
-        $gmoParams = @{
-            ListAvailable = $True
-        }
+        $gmoParams = @{}
         if ($Name) {
-            $gmoParams.Add("Name", $Name)
+            $gmoParams.Add('Name', $Name)
         }
 
-        $installed = Get-Module @gmoParams
+        $installed = Get-InstalledPSResource @gmoParams
 
         if ($installed) {
 
-            $progParam.Status = "Getting online modules"
-            $progParam.CurrentOperation = "Find-Module -repository $Gallery"
+            $progParam.Status = 'Getting online modules'
+            $progParam.CurrentOperation = "Find-PSResource -Repository $Gallery"
             $progParam.PercentComplete = 50
             Write-Progress @progParam
 
             $fmoParams = @{
                 Repository  = $Gallery
-                ErrorAction = "Stop"
+                ErrorAction = 'Stop'
             }
             if ($Name) {
-                $fmoParams.Add("Name", $Name)
+                $fmoParams.Add('Name', $Name)
+            }
+            else {
+                $fmoParams.Add('Name', [string[]]$installed.Name)
             }
             Try {
-                $online = @(Find-Module @fmoParams)
+                #TODO: manage prerelease separately
+                $online = @(Find-PSResource @fmoParams -Prerelease)
             }
             Catch {
                 Write-Warning "Failed to find online module(s). $($_.Exception.message)"
@@ -67,21 +69,21 @@ Function Compare-Module {
             $progParam.percentComplete = 80
             Write-Progress @progParam
 
-            $data = ($online).Where( {$installed.name -contains $_.name}) |
-                Select-Object -property Name,
-            @{Name = "OnlineVersion"; Expression = {$_.Version}},
-            @{Name = "InstalledVersion"; Expression = {
+            $data = ($online).Where( { $installed.name -contains $_.name }) |
+            Select-Object -Property Name,
+            @{Name = 'OnlineVersion'; Expression = { $_.Version } },
+            @{Name = 'InstalledVersion'; Expression = {
                     #save the name from the incoming online object
                     $name = $_.Name
-                    $installed.Where( {$_.name -eq $name}).Version -join ","}
+                    $installed.Where( { $_.name -eq $name }).Version -join ',' }
             },
             PublishedDate,
-            @{Name = "UpdateNeeded"; Expression = {
+            @{Name = 'UpdateNeeded'; Expression = {
                     $name = $_.Name
                     #there could be multiple versions installed
                     #only need to compare the last one
-                    $mostRecentVersion = $installed.Where( {$_.name -eq $name}).Version |
-                    Sort-Object -Descending | Select-Object -first 1
+                    $mostRecentVersion = $installed.Where( { $_.name -eq $name }).Version |
+                    Sort-Object -Descending | Select-Object -First 1
 
                     #need to ensure that PowerShell compares version objects and not strings
                     If ([version]$_.Version -gt [version]$mostRecentVersion) {
@@ -102,7 +104,7 @@ Function Compare-Module {
             $data
         }
         else {
-            Write-Warning "No local module or modules found"
+            Write-Warning 'No local module or modules found'
         }
     } #Progress
 
