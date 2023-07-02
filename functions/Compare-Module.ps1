@@ -1,4 +1,6 @@
-﻿
+﻿using namespace System.Collections.Generic;
+using namespace Microsoft.PowerShell.PSResourceGet.UtilClasses;
+
 Function Compare-Module {
 
     [cmdletbinding()]
@@ -15,7 +17,7 @@ Function Compare-Module {
         [string]$Name,
         [ValidateNotNullOrEmpty()]
         [string]$Gallery = 'PSGallery',
-        
+
         [switch]$IncludePrerelease
     )
 
@@ -43,6 +45,16 @@ Function Compare-Module {
 
         $installed = Get-InstalledPSResource @gmoParams | Where-Object Type -EQ 'Module' #'Get-InstalledPSResource -Type Module' doesn't exist yet....
 
+        # need only the most recent version for each module
+
+        $installedMostRecentVersion = [List[PSResourceInfo]]::new()
+        $installed | Group-Object -Property Name | ForEach-Object {
+            $entry = $_.Group | Sort-Object -Property Version -Descending | Select-Object -First 1
+            $installedMostRecentVersion.Add($entry)
+        }
+
+        $installed = $installedMostRecentVersion
+
         if ($installed) {
 
             $progParam.Status = 'Getting online modules'
@@ -66,7 +78,8 @@ Function Compare-Module {
             }
 
             Try {
-                $online = @(Find-PSResource @fmoParams)
+                $online = [List[PSResourceInfo]]::new()
+                $online.AddRange([List[PSResourceInfo]] @(Find-PSResource @fmoParams))
             }
             Catch {
                 Write-Warning "Failed to find online module(s). $($_.Exception.message)"
@@ -81,24 +94,14 @@ Function Compare-Module {
             @{Name = 'InstalledVersion'; Expression = {
                     #save the name from the incoming online object
                     $name = $_.Name
-                    $installed.Where( { $_.name -eq $name }).Version -join ',' }
+                    $installed.Where( { $_.name -eq $name }).Version }
             },
             PublishedDate,
             @{Name = 'UpdateNeeded'; Expression = {
                     $name = $_.Name
-                    #there could be multiple versions installed
-                    #only need to compare the last one
-                    $mostRecentVersion = $installed.Where( { $_.name -eq $name }).Version |
-                    Sort-Object -Descending | Select-Object -First 1
-
-                    #need to ensure that PowerShell compares version objects and not strings
-                    If ([version]$_.Version -gt [version]$mostRecentVersion) {
-                        $result = $True
-                    }
-                    else {
-                        $result = $False
-                    }
-                    $result
+                    $mostRecentVersion = $installed.Where( { $_.name -eq $name }).Version
+                    
+                    [version]$_.Version -gt [version]$mostRecentVersion
                 }
             } | Sort-Object -Property Name
 
