@@ -1,5 +1,6 @@
 ﻿using namespace System.Collections.Generic;
 using namespace Microsoft.PowerShell.PSResourceGet.UtilClasses;
+using namespace System.Management.Automation;
 
 Function Compare-Module {
 
@@ -34,6 +35,10 @@ Function Compare-Module {
 
         Write-Progress @progParam
 
+        Update-TypeData -MemberName SemanticVersion -MemberType ScriptProperty -Value {
+            [SemanticVersion]($this.IsPrerelease ? ($this.Version, $this.Prerelease -join '-') : $this.Version) 
+        } -TypeName 'Microsoft.PowerShell.PSResourceGet.UtilClasses.PSResourceInfo' -Force
+
     } #begin
 
     Process {
@@ -49,7 +54,7 @@ Function Compare-Module {
 
         $installedMostRecentVersion = [List[PSResourceInfo]]::new()
         $installed | Group-Object -Property Name | ForEach-Object {
-            $entry = $_.Group | Sort-Object -Property Version -Descending | Select-Object -First 1
+            $entry = $_.Group | Sort-Object -Property ($_.SemanticVersion ?? $_.Version) -Descending | Select-Object -First 1
             $installedMostRecentVersion.Add($entry)
         }
 
@@ -90,18 +95,19 @@ Function Compare-Module {
 
             $data = ($online).Where( { $installed.name -eq $_.name }) |
             Select-Object -Property Name,
-            @{Name = 'OnlineVersion'; Expression = { $_.Version } },
+            @{Name = 'OnlineVersion'; Expression = { $_.SemanticVersion ?? $_.Version } },
             @{Name = 'InstalledVersion'; Expression = {
                     #save the name from the incoming online object
                     $name = $_.Name
-                    $installed.Where( { $_.name -eq $name }).Version }
+                    #fall back to Version when it's no
+                    $installed.Where( { $_.name -eq $name }).SemanticVersion ?? $installed.Where( { $_.name -eq $name }).Version }
             },
             PublishedDate,
             @{Name = 'UpdateNeeded'; Expression = {
                     $name = $_.Name
-                    $mostRecentVersion = $installed.Where( { $_.name -eq $name }).Version
-                    
-                    [version]$_.Version -gt [version]$mostRecentVersion
+                    $mostRecentVersion = $installed.Where( { $_.name -eq $name }).SemanticVersion ?? $installed.Where( { $_.name -eq $name }).Version
+                            
+                    $_.Version -gt $mostRecentVersion
                 }
             } | Sort-Object -Property Name
 
