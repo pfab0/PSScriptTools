@@ -14,7 +14,9 @@ Function Compare-Module {
         [Alias('modulename')]
         [string]$Name,
         [ValidateNotNullOrEmpty()]
-        [string]$Gallery = 'PSGallery'
+        [string]$Gallery = 'PSGallery',
+        
+        [switch]$IncludePrerelease
     )
 
     Begin {
@@ -24,7 +26,7 @@ Function Compare-Module {
         $progParam = @{
             Activity         = $MyInvocation.MyCommand
             Status           = 'Getting installed modules'
-            CurrentOperation = 'Get-InstalledPSResource'
+            CurrentOperation = 'Get-InstalledPSResource | Where-Object Type -eq Module' #'Get-InstalledPSResource -Type Module' doesn't exist yet....
             PercentComplete  = 25
         }
 
@@ -39,18 +41,19 @@ Function Compare-Module {
             $gmoParams.Add('Name', $Name)
         }
 
-        $installed = Get-InstalledPSResource @gmoParams
+        $installed = Get-InstalledPSResource @gmoParams | Where-Object Type -EQ 'Module' #'Get-InstalledPSResource -Type Module' doesn't exist yet....
 
         if ($installed) {
 
             $progParam.Status = 'Getting online modules'
-            $progParam.CurrentOperation = "Find-PSResource -Repository $Gallery"
+            $progParam.CurrentOperation = "Find-PSResource -Type Module -Repository $Gallery"
             $progParam.PercentComplete = 50
             Write-Progress @progParam
 
             $fmoParams = @{
-                Repository  = $Gallery
-                ErrorAction = 'Stop'
+                Type       = 'Module'
+                Repository = $Gallery
+                #ErrorAction = 'Stop'
             }
             if ($Name) {
                 $fmoParams.Add('Name', $Name)
@@ -58,9 +61,12 @@ Function Compare-Module {
             else {
                 $fmoParams.Add('Name', [string[]]$installed.Name)
             }
+            if ($IncludePrerelease) {
+                $fmoParams.Add('Prerelease', $True)
+            }
+
             Try {
-                #TODO: manage prerelease separately
-                $online = @(Find-PSResource @fmoParams -Prerelease)
+                $online = @(Find-PSResource @fmoParams)
             }
             Catch {
                 Write-Warning "Failed to find online module(s). $($_.Exception.message)"
@@ -69,7 +75,7 @@ Function Compare-Module {
             $progParam.percentComplete = 80
             Write-Progress @progParam
 
-            $data = ($online).Where( { $installed.name -contains $_.name }) |
+            $data = ($online).Where( { $installed.name -eq $_.name }) |
             Select-Object -Property Name,
             @{Name = 'OnlineVersion'; Expression = { $_.Version } },
             @{Name = 'InstalledVersion'; Expression = {
